@@ -1,0 +1,18 @@
+# Ambientes Virtuais
+venv/
+venv_build/
+venv_treino/
+
+# Compilação e Distribuição
+build/
+dist/
+*.spec
+
+# Temporários do Python e Jupyter
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+
+# Dados e Pesos (Opcional)
+# Se os pesos forem muito grandes (>50MB), ignore-os e mova manualmente
+# weights/
