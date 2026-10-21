@@ -1,8 +1,9 @@
 # Capacity estimates for a Ryzen 7 5700X3D and 32 GiB RAM
 
-These are planning estimates, not measured limits of that computer. The current
-application simulates independent neurons. Connected networks are not implemented
-by this update; their estimates below describe possible future implementations.
+These are planning estimates, not measured limits of that computer. The application
+supports independent neurons and an optional sparse connected mode. The measured
+optimization results below concern the independent baseline. Connected network
+equations, current storage and measurement instructions are in [NETWORKS.md](NETWORKS.md).
 
 The 5700X3D has eight cores and sixteen threads
 ([AMD specifications](https://ir.amd.com/news-events/press-releases/detail/1177/amd-reveals-next-gen-desktop-processors-for-extreme-pc-gaming-and-creator-performance)).
@@ -45,10 +46,18 @@ similar effect. The current update preserves both settings and every trace.
 
 ## Connected neurons: topology determines capacity
 
+The connected implementation uses int32 targets and one shared outgoing weight
+per source, approximately `4*N*k + 9*N + 72` bytes for topology. Old and new
+populations can retain separate graphs. It has a 10-million-synapse application
+budget; the 10,000-neuron / 100-outgoing preset has one million synapses. Actual
+spike event arrays add storage proportional to activity. These configured limits
+are below the hypothetical memory-only ceilings in the comparison below.
+
 The following calculations retain the same full voltage traces and the previous
-result. They allow one additional network's connectivity storage, shared between
-successive runs. Rebuilding a second connectivity graph concurrently increases
-the requirement further.
+result. They compare hypothetical representations with an individual weight per
+edge and one shared connectivity graph. They are not the memory accounting of
+the connected implementation above. Retaining two such graphs would increase
+their requirement further.
 
 For a sparse network with average outgoing degree `k`, one simple representation
 stores a float32 weight and a 32-bit target index per edge:

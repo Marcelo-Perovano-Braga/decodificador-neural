@@ -1,4 +1,4 @@
-"""Responsive Fluent desktop interface for independent neuron populations."""
+"""Responsive Fluent desktop interface for simulated neuron populations."""
 
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
     CheckBox,
+    DoubleSpinBox,
     InfoBadge,
     InfoLevel,
     ProgressBar,
@@ -52,6 +53,7 @@ from qfluentwidgets import (
 from config import CLASS_CODES, CLASS_NAMES, SimulationConfig
 from inference import default_cpu_threads
 from models import NeuronClassifier1D
+from network import MAX_OUT_DEGREE, MAX_SYNAPSES, NetworkConfig
 from population import MAX_NEURONS_PER_CLASS, PopulationRequest
 from population_table import PopulationTableModel
 from population_worker import PopulationResult, PopulationRunner, process_population
@@ -115,7 +117,8 @@ class MetricCard(SimpleCardWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 10, 16, 10)
         layout.setSpacing(2)
-        layout.addWidget(caption(title))
+        self.title_label = caption(title)
+        layout.addWidget(self.title_label)
         self.value_label = SubtitleLabel("—")
         layout.addWidget(self.value_label)
 
@@ -157,6 +160,10 @@ class IzhikevichApp(QMainWindow):
             spin.valueChanged.connect(self._schedule_update)
         self.seed_spin.valueChanged.connect(self._schedule_update)
         self.variation_check.stateChanged.connect(self._schedule_update)
+        self.network_check.stateChanged.connect(self._network_changed)
+        self.network_preset_button.clicked.connect(self._network_preset)
+        for spin in self.network_spins:
+            spin.valueChanged.connect(self._schedule_update)
         self.slider_current.valueChanged.connect(self._schedule_update)
         self.slider_current.sliderReleased.connect(self._submit_request)
         self.neuron_selector.valueChanged.connect(self._show_selected_neuron)
@@ -211,7 +218,7 @@ class IzhikevichApp(QMainWindow):
         titles = QVBoxLayout()
         titles.setSpacing(2)
         titles.addWidget(TitleLabel("Dinâmica neuronal simulada"))
-        titles.addWidget(caption("Populações independentes · classificação de padrões RS, CH e FS"))
+        titles.addWidget(caption("Populações independentes ou conectadas · padrões RS, CH e FS"))
         layout.addLayout(titles, 1)
         self.model_badge = InfoBadge(
             "MODELO PRONTO" if self.model is not None else "SEM MODELO",
@@ -264,7 +271,7 @@ class IzhikevichApp(QMainWindow):
             row.addWidget(spin)
             self.count_spins.append(spin)
             controls.addLayout(row)
-        controls.addWidget(caption(f"Até {MAX_NEURONS_PER_CLASS} por classe. Neurônios sem conexões entre si."))
+        controls.addWidget(caption(f"Até {MAX_NEURONS_PER_CLASS} por classe. Conexões opcionais no controle de rede."))
         controls.addSpacing(6)
         row = QHBoxLayout()
         row.addWidget(StrongBodyLabel("Estímulo aplicado"), 1)
@@ -296,6 +303,7 @@ class IzhikevichApp(QMainWindow):
         self.new_seed_button = PushButton("Nova variação")
         controls.addWidget(self.new_seed_button)
         layout.addWidget(card)
+        layout.addWidget(self._build_network_controls())
         explanation = SimpleCardWidget()
         explanation_layout = QVBoxLayout(explanation)
         explanation_layout.setContentsMargins(18, 16, 18, 16)
@@ -317,6 +325,80 @@ class IzhikevichApp(QMainWindow):
         layout.addStretch(1)
         return scroll
 
+    def _build_network_controls(self) -> SimpleCardWidget:
+        card = SimpleCardWidget()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.addWidget(StrongBodyLabel("Conexões sinápticas"))
+        self.network_check = CheckBox("Conectar neurônios")
+        layout.addWidget(self.network_check)
+        self.network_preset_button = PushButton("Preset: 10.000 neurônios")
+        layout.addWidget(self.network_preset_button)
+        self.network_controls = QWidget()
+        fields = QVBoxLayout(self.network_controls)
+        fields.setContentsMargins(0, 0, 0, 0)
+        self.out_degree_spin = SpinBox()
+        self.out_degree_spin.setRange(0, MAX_OUT_DEGREE)
+        self.out_degree_spin.setValue(100)
+        self.out_degree_spin.setKeyboardTracking(False)
+        definitions = [
+            ("Saídas por neurônio", self.out_degree_spin),
+        ]
+        for name, text, low, high, value, step in (
+            ("weight_spin", "Força excitatória", 0.0, 5.0, 0.5, 0.1),
+            ("inhibitory_spin", "Inibitórios (%)", 0.0, 100.0, 20.0, 5.0),
+            ("inhibitory_gain_spin", "Ganho inibitório", 0.0, 10.0, 4.0, 0.5),
+            ("delay_spin", "Atraso (ms)", 0.1, 20.0, 1.0, 0.1),
+            ("tau_spin", "Decaimento (ms)", 0.5, 50.0, 5.0, 0.5),
+        ):
+            spin = DoubleSpinBox()
+            spin.setRange(low, high)
+            spin.setDecimals(2)
+            spin.setSingleStep(step)
+            spin.setValue(value)
+            spin.setKeyboardTracking(False)
+            setattr(self, name, spin)
+            definitions.append((text, spin))
+        self.network_spins = []
+        for text, spin in definitions:
+            row = QHBoxLayout()
+            row.addWidget(CaptionLabel(text), 1)
+            spin.setFixedWidth(132)
+            row.addWidget(spin)
+            fields.addLayout(row)
+            self.network_spins.append(spin)
+        self.network_controls.setEnabled(False)
+        layout.addWidget(self.network_controls)
+        layout.addWidget(caption(
+            "Sinapses de corrente com atraso. Papéis excitatório/inibitório são "
+            "sorteados separadamente dos parâmetros RS/CH/FS."
+        ))
+        layout.addWidget(caption(
+            f"Até {MAX_SYNAPSES:,} sinapses, sem autoconexões nem destinos repetidos. "
+            "Em populações pequenas, as saídas são limitadas a N − 1."
+        ))
+        layout.addWidget(caption(
+            "Na rede, as previsões da IA são experimentais: o modelo foi treinado "
+            "com neurônios independentes. Os pesos não são retreinados."
+        ))
+        return card
+
+    def _network_changed(self, *_args) -> None:
+        self.network_controls.setEnabled(self.network_check.isChecked())
+        self._schedule_update()
+
+    def _network_preset(self) -> None:
+        for spin, value in zip(self.count_spins, (3334, 3333, 3333), strict=True):
+            spin.blockSignals(True)
+            spin.setValue(value)
+            spin.blockSignals(False)
+        for spin, value in zip(self.network_spins, (100, 0.5, 20, 4, 1, 5), strict=True):
+            spin.blockSignals(True)
+            spin.setValue(value)
+            spin.blockSignals(False)
+        self.network_check.setChecked(True)
+        self._schedule_update()
+
     def _build_results(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
@@ -336,6 +418,7 @@ class IzhikevichApp(QMainWindow):
         self.tabs.addTab(self._build_signal_tab(), "Sinais")
         self.tabs.addTab(self._build_table_tab(), "Classificações individuais")
         self.tabs.addTab(self._build_statistics_tab(), "Estatísticas")
+        self.tabs.addTab(self._build_network_tab(), "Rede")
         layout.addWidget(self.tabs, 1)
         return panel
 
@@ -427,6 +510,48 @@ class IzhikevichApp(QMainWindow):
         layout.addWidget(trace_card, 2)
         return page
 
+    def _build_network_tab(self) -> QWidget:
+        page = ScrollArea()
+        page.setWidgetResizable(True)
+        page.setFrameShape(QFrame.Shape.NoFrame)
+        panel = QWidget()
+        panel.setObjectName("networkPanel")
+        page.viewport().setObjectName("networkViewport")
+        page.setWidget(panel)
+        layout = QVBoxLayout(panel)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.addWidget(StrongBodyLabel("Dinâmica da rede"))
+        self.network_detail = caption("Modo independente: ative as conexões para inspecionar a rede.")
+        layout.addWidget(self.network_detail)
+        layout.addWidget(caption("Taxa de disparo de toda a população · janelas de até 5 ms"))
+        self.rate_graph = pg.PlotWidget()
+        self.rate_graph.setFixedHeight(190)
+        self.rate_graph.setLabel("left", "Taxa média", units="Hz")
+        self.rate_graph.setMenuEnabled(False)
+        self.rate_curve = self.rate_graph.plot([], [], pen=pg.mkPen("#e49329", width=2))
+        layout.addWidget(self.rate_graph)
+        layout.addWidget(caption("Corrente sináptica média · unidades do modelo"))
+        self.synaptic_graph = pg.PlotWidget()
+        self.synaptic_graph.setFixedHeight(150)
+        self.synaptic_graph.setLabel("left", "Corrente média")
+        self.synaptic_graph.setMenuEnabled(False)
+        self.synaptic_curve = self.synaptic_graph.plot([], [], pen=pg.mkPen("#428bff", width=1))
+        self.synaptic_curve.setDownsampling(auto=True, method="peak")
+        self.synaptic_curve.setClipToView(True)
+        layout.addWidget(self.synaptic_graph)
+        layout.addWidget(StrongBodyLabel("Conexões: origem → destino"))
+        layout.addWidget(caption("Contagens por parâmetros intrínsecos, calculadas sobre todas as sinapses."))
+        self.connectivity_table = self._statistics_table(3, list(CLASS_CODES), list(CLASS_CODES))
+        layout.addWidget(self.connectivity_table)
+        self.connection_detail = caption("Selecione um neurônio na aba Sinais para inspecionar suas conexões.")
+        layout.addWidget(self.connection_detail)
+        layout.addWidget(caption(
+            "Rede exploratória de sinapses de corrente. Não modela junções elétricas, "
+            "plasticidade nem aquisição de sinais biológicos."
+        ))
+        return page
+
     def _build_table_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -475,7 +600,8 @@ class IzhikevichApp(QMainWindow):
             3, ["Esperados", "Previstos (classificados)"], list(CLASS_CODES),
         )
         layout.addWidget(self.counts_table)
-        layout.addWidget(StrongBodyLabel("Esperado × previsto"))
+        self.confusion_heading = StrongBodyLabel("Esperado × previsto")
+        layout.addWidget(self.confusion_heading)
         self.confusion_table = self._statistics_table(
             3, [*CLASS_CODES, "Indeterminado"], [f"{code} esperado" for code in CLASS_CODES],
         )
@@ -515,6 +641,14 @@ class IzhikevichApp(QMainWindow):
                 current=self.slider_current.value() / 10.0,
                 seed=self.seed_spin.value(),
                 varied=self.variation_check.isChecked(),
+                network=NetworkConfig(
+                    out_degree=self.out_degree_spin.value(),
+                    weight=self.weight_spin.value(),
+                    inhibitory_fraction=self.inhibitory_spin.value() / 100.0,
+                    inhibitory_gain=self.inhibitory_gain_spin.value(),
+                    delay_ms=self.delay_spin.value(),
+                    tau_ms=self.tau_spin.value(),
+                ) if self.network_check.isChecked() else None,
             )
         except ValueError as exc:
             self.runner.invalidate()
@@ -537,6 +671,7 @@ class IzhikevichApp(QMainWindow):
             card.set_value("—")
         self.counts_table.clearContents()
         self.confusion_table.clearContents()
+        self._show_network(None)
         self.statistics_detail.setText("Sem população válida.")
         self.performance_detail.setText("—")
         self.raster_subtitle.setText("Sem população válida.")
@@ -565,6 +700,10 @@ class IzhikevichApp(QMainWindow):
         self.classified_card.set_value(str(stats.classified) if result.predictions is not None else "—")
         self.accuracy_card.set_value(f"{stats.accuracy:.1%}" if stats.accuracy is not None else "—")
         self.spike_card.set_value(str(stats.total_spikes))
+        connected = population.network_activity is not None
+        self.accuracy_card.title_label.setText(
+            "Concordância experimental" if connected else "Acerto dos classificados"
+        )
         for series in result.raster.series:
             self.raster_curves[series.class_code].setData(series.times, series.neuron_ids)
         self.raster_graph.setYRange(0, population.size + 1, padding=0)
@@ -579,15 +718,54 @@ class IzhikevichApp(QMainWindow):
             f"{preview_text} Cores por previsão: {legend}; cinza = indeterminado / sem modelo."
         )
         self._show_statistics(result)
+        self._show_network(result)
         self._show_selected_neuron()
         self._set_badge(self.processing_badge, "PRONTO", InfoLevel.SUCCESS)
         self.status_label.setText(
-            f"Simulação concluída · {population.size} neurônios · estímulo "
+            f"{'Rede conectada' if connected else 'População independente'} concluída · "
+            f"{population.size} neurônios · estímulo "
             f"{population.request.current:g} · semente {population.request.seed}."
+            + (" Classificação experimental; modelo treinado sem sinapses." if connected else "")
         )
+
+    def _show_network(self, result: PopulationResult | None) -> None:
+        activity = result.population.network_activity if result is not None else None
+        if activity is None:
+            self.rate_curve.setData([], [])
+            self.synaptic_curve.setData([], [])
+            self.connectivity_table.clearContents()
+            self.network_detail.setText("Modo independente: ative as conexões para inspecionar a rede.")
+            self.connection_detail.setText("Sem conexões nesta população.")
+            return
+        network = activity.network
+        inhibited = int(network.inhibitory.sum())
+        self.network_detail.setText(
+            f"{network.size:,} neurônios · {network.synapse_count:,} sinapses dirigidas · "
+            f"{network.out_degree} saídas por neurônio\n"
+            f"Excitatórios: {network.size - inhibited:,} · Inibitórios: {inhibited:,} · "
+            f"Atraso efetivo: {activity.effective_delay_ms:g} ms · "
+            f"Eventos sinápticos entregues: {activity.delivered_events:,}"
+        )
+        self.rate_curve.setData(activity.rate_times_ms, activity.rate_hz)
+        self.synaptic_curve.setData(result.population.timeline, activity.mean_synaptic_current)
+        for row in range(3):
+            for column in range(3):
+                self._set_cell(self.connectivity_table, row, column, int(network.class_connections[row, column]))
 
     def _show_statistics(self, result: PopulationResult) -> None:
         stats = result.statistics
+        connected = result.population.network_activity is not None
+        self.counts_table.setHorizontalHeaderLabels([
+            "Parâmetros" if connected else "Esperados", "Previstos (classificados)",
+        ])
+        self.confusion_heading.setText("Parâmetros × previsão experimental" if connected else "Esperado × previsto")
+        self.confusion_table.setVerticalHeaderLabels([
+            f"{code} {'parâmetros' if connected else 'esperado'}" for code in CLASS_CODES
+        ])
+        self.accuracy_card.setToolTip(
+            "Concordância com parâmetros de origem. Modelo sem validação em redes conectadas."
+            if connected else "Acertos / neurônios classificados. Indeterminados são contabilizados na cobertura."
+        )
         for row, code in enumerate(CLASS_CODES):
             self._set_cell(self.counts_table, row, 0, stats.expected_counts[code])
             predicted = stats.predicted_counts[code] if result.predictions is not None else "—"
@@ -601,10 +779,15 @@ class IzhikevichApp(QMainWindow):
             confidence = f"{stats.mean_confidence:.1%}" if stats.mean_confidence is not None else "—"
             self.statistics_detail.setText(
                 f"Cobertura: {stats.classified}/{stats.total} ({stats.coverage:.1%}) · "
-                f"Acertos: {stats.correct}/{stats.classified} classificados · "
+                f"{'Concordantes' if connected else 'Acertos'}: {stats.correct}/{stats.classified} classificados · "
                 f"Indeterminados: {stats.indeterminate}\n"
                 f"Confiança média dos classificados: {confidence} · "
                 f"Taxa média de disparo: {stats.mean_rate_hz:.1f} Hz"
+            )
+        if connected:
+            self.statistics_detail.setText(
+                self.statistics_detail.text() + "\nExploratório: concordância com os parâmetros RS/CH/FS, "
+                "sem validação do classificador em redes conectadas."
             )
         self.performance_detail.setText(
             f"Processamento: {result.elapsed_ms:.0f} ms para toda a população "
@@ -626,7 +809,7 @@ class IzhikevichApp(QMainWindow):
         name = CLASS_NAMES[int(population.labels[row])]
         self.curve.setData(population.timeline, population.traces[row])
         self.trace_subtitle.setText(
-            f"Neurônio {row + 1} · esperado: {name} ({code}) · "
+            f"Neurônio {row + 1} · parâmetros: {name} ({code}) · "
             f"{int(population.spike_counts[row])} disparos · "
             f"estímulo {population.request.current:g}"
         )
@@ -653,6 +836,24 @@ class IzhikevichApp(QMainWindow):
                 self.selected_badge, "CORRETO" if correct else "DIVERGENTE",
                 InfoLevel.SUCCESS if correct else InfoLevel.ERROR,
             )
+        activity = population.network_activity
+        if activity is not None:
+            network = activity.network
+            role = "inibitório" if network.inhibitory[row] else "excitatório"
+            destinations = ", ".join(str(int(target) + 1) for target in network.targets[row, :16]) or "nenhum"
+            suffix = " (primeiros 16)" if network.out_degree > 16 else ""
+            self.connection_detail.setText(
+                f"Neurônio {row + 1}: {role} · peso por saída {network.source_weights[row]:g}\n"
+                f"Entradas: {network.in_degrees[row]} · Saídas: {network.out_degree}\n"
+                f"Destinos{suffix}: {destinations}"
+            )
+            if prediction is not None:
+                self.selected_detail.setText(self.selected_detail.text() + " · Previsão experimental em rede.")
+                if prediction.determined:
+                    self._set_badge(
+                        self.selected_badge, "CONCORDANTE" if prediction.class_code == code else "DIVERGENTE",
+                        InfoLevel.INFOAMTION,
+                    )
 
     def _select_table_neuron(self, index) -> None:
         if index.isValid():
@@ -668,7 +869,7 @@ class IzhikevichApp(QMainWindow):
         palette = LIGHT_PALETTE if self.is_light_theme else DARK_PALETTE
         self.root.setStyleSheet(
             "QWidget#appRoot, QWidget#controlPanel, QWidget#controlViewport, "
-            "QWidget#signalsPanel, QWidget#signalsViewport "
+            "QWidget#signalsPanel, QWidget#signalsViewport, QWidget#networkPanel, QWidget#networkViewport "
             f"{{ background-color: {palette['window']}; }}"
         )
         self.tabs.setStyleSheet(
@@ -678,7 +879,7 @@ class IzhikevichApp(QMainWindow):
             f"QTabBar::tab:selected {{ color: {palette['text']}; background: {palette['plot']}; "
             "border-bottom: 2px solid #00a884; }"
         )
-        for graph in (self.plot_graph, self.raster_graph):
+        for graph in (self.plot_graph, self.raster_graph, self.rate_graph, self.synaptic_graph):
             graph.setBackground(palette["plot"])
             for axis_name in ("left", "bottom"):
                 axis = graph.getAxis(axis_name)

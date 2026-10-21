@@ -32,6 +32,8 @@ class PopulationTableModel(QAbstractTableModel):
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
+            if section == 1 and self.result is not None and self.result.population.network_activity is not None:
+                return "Parâmetros"
             return self.HEADERS[section] if 0 <= section < len(self.HEADERS) else None
         return None
 
@@ -56,7 +58,13 @@ class PopulationTableModel(QAbstractTableModel):
             predicted = prediction.class_code
             confidence = f"{prediction.confidence:.1%}"
             state = "Correto" if predicted == expected else "Divergente"
-        if role == Qt.ItemDataRole.ToolTipRole and prediction is not None and prediction.reason:
+        if population.network_activity is not None:
+            if state == "Correto":
+                state = "Concordante"
+            if role == Qt.ItemDataRole.ToolTipRole:
+                reason = prediction.reason if prediction is not None and prediction.reason else ""
+                return f"{reason} Previsão experimental: modelo treinado com neurônios independentes.".strip()
+        elif role == Qt.ItemDataRole.ToolTipRole and prediction is not None and prediction.reason:
             return prediction.reason
         values = (row + 1, expected, predicted, confidence, int(population.spike_counts[row]), state)
         return values[column] if 0 <= column < len(values) else None

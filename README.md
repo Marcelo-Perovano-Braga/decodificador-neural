@@ -4,9 +4,10 @@ Prova de conceito computacional para classificar três padrões simulados de
 atividade de um único neurônio: **Regular Spiking (RS)**, **Chattering (CH)** e
 **Fast Spiking (FS)**.
 
-O projeto não utiliza amostras biológicas, não simula uma rede sináptica e não
-constitui uma interface cérebro-computador. Cada linha do dataset corresponde a
-uma instância independente de um neurônio digital.
+O projeto não utiliza amostras biológicas e não constitui uma interface
+cérebro-computador. Cada linha do dataset corresponde a uma instância
+independente de um neurônio digital. A interface também oferece um modo
+exploratório de rede sináptica esparsa, separado do treinamento original.
 
 ## O que foi corrigido
 
@@ -127,6 +128,44 @@ são usados somente para comparar os resultados. A arquitetura, os pesos e o
 pipeline de treinamento permanecem compatíveis com `weights/classifier.pt`.
 Os arquivos `.pth` da implementação antiga não substituem esse checkpoint.
 
+### Redes conectadas (exploratório)
+
+No painel esquerdo, **Conexões sinápticas → Conectar neurônios** ativa a rede.
+O botão **Preset: 10.000 neurônios** configura 3.334 RS, 3.333 CH e 3.333 FS,
+com 100 saídas por neurônio: **1.000.000 de sinapses dirigidas**. Ele preserva o
+estímulo, a semente e a opção de variação selecionados.
+
+- Cada neurônio envia para destinos aleatórios distintos, sem autoconexões.
+  Em populações pequenas, a quantidade de saídas é limitada a `N − 1`.
+- Cada disparo envia uma corrente assinada após o atraso configurado. O padrão
+  usa força excitatória 0,5, 20% de neurônios inibitórios, ganho inibitório 4,
+  atraso de 1 ms e decaimento exponencial de 5 ms, em unidades do modelo.
+- Os papéis excitatório/inibitório são sorteados separadamente dos parâmetros
+  RS/CH/FS. Eles não representam uma identificação de tipos celulares reais.
+- A mesma semente reproduz parâmetros, conexões e papéis. Alterar apenas a
+  força ou o atraso mantém a topologia, permitindo comparar os efeitos.
+- Há um limite de **10.000.000 de sinapses** e até 1.000 saídas por neurônio.
+  Configurações acima do orçamento são rejeitadas antes de alocar a rede.
+  O modo independente mantém seu limite de 300.000 neurônios.
+
+A aba **Rede** mostra a taxa de disparo de toda a população em janelas de até
+5 ms, a corrente sináptica média, as contagens de conexões entre grupos RS/CH/FS
+e o papel, entradas, saídas e uma amostra de destinos do neurônio selecionado.
+Todos os destinos são mantidos em memória. O raster continua limitado a 200
+neurônios visíveis, com acesso ao traço completo de qualquer neurônio.
+
+No modo conectado, os disparos e as taxas são medidos antes do ruído de
+observação; esse ruído não produz eventos sinápticos. As previsões do checkpoint
+continuam disponíveis e são identificadas como **experimentais**. A concordância
+com os parâmetros de origem não valida o classificador em redes: ele foi treinado
+somente com neurônios independentes. Não é necessário retreinar para abrir a
+atualização, mas uma avaliação científica da nova condição exige dados e testes
+próprios, mantendo os resultados originais separados.
+
+As equações, a ordem de atualização e as limitações estão em
+[NETWORKS.md](NETWORKS.md). Este modo usa sinapses de corrente; não implementa
+junções elétricas nem plasticidade.
+
 ### Visualização e resultados
 
 - **Sinais:** raster dos instantes de disparo e traço completo do neurônio
@@ -180,6 +219,16 @@ No mesmo ambiente da interface, utilizando seu checkpoint já treinado:
 ```powershell
 python benchmark_population.py --neurons 3000 10000 100000 --threads 8 --output artifacts/population_benchmark.json
 ```
+
+Para medir a rede com o checkpoint local:
+
+```powershell
+python benchmark_population.py --connected --neurons 1000 10000 --out-degree 100 --threads 8 --output artifacts/network_benchmark.json
+```
+
+O JSON registra as configurações sinápticas, sinapses efetivas, armazenamento da
+topologia, eventos entregues, taxas de disparo e tempos de cada repetição. Use
+`--simulation-only` para medir a rede sem incluir a classificação.
 
 O benchmark realiza três medições por tamanho, após aquecimento, e inclui
 simulação, ruído, inferência, estatísticas e preparação do raster. Não inclui
