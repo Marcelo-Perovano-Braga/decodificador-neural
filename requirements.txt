@@ -1,0 +1,5 @@
+numpy>=1.26,<3
+torch>=2.2,<3
+PyQt6>=6.6,<7
+pyqtgraph>=0.13.7,<1
+PyQt6-Fluent-Widgets>=1.11,<2
