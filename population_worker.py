@@ -59,6 +59,7 @@ def process_population(
             class_names=checkpoint["class_names"],
             minimum_spikes=config.minimum_spikes,
             confidence_threshold=float(checkpoint.get("confidence_threshold", 0.70)),
+            temperature=float(checkpoint.get("temperature", 1.0)),
             device=device,
             currents=np.full(population.size, request.current, dtype=np.float32),
             trained_current_range=(config.current_min, config.current_max),

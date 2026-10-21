@@ -106,6 +106,26 @@ O comando cria relatórios HTML, CSV e JSON em uma pasta nova dentro de
 não exige reconstruir o executável. Veja [RESEARCH.md](RESEARCH.md) para os
 requisitos, o protocolo, exemplos de comandos e a interpretação dos resultados.
 
+### Treinar e adotar um modelo candidato
+
+Para treinar com entradas e redes mais variadas, comparar com o checkpoint
+atual e adotá-lo somente se atender a todos os critérios:
+
+```powershell
+python train_robust.py --seed 17029 --adopt-if-superior
+```
+
+O protocolo expandido, com envelopes aleatórios e confirmação nova, está em
+[EXPANDED_ROBUST_TRAINING.md](EXPANDED_ROBUST_TRAINING.md). Use `--protocol 2`
+para treiná-lo; `--protocol 1` preserva a reprodução do primeiro estudo.
+
+O ajuste usa dados novos, com splits distintos para treino, seleção de época
+e calibração de confiança. A comparação usa novas sementes, duas famílias de
+estímulo ausentes do ajuste e critérios que exigem ganhos sem regressões grandes
+nas condições originais. Uma adoção bem-sucedida preserva uma cópia verificada
+do checkpoint anterior. Veja [ROBUST_TRAINING.md](ROBUST_TRAINING.md) para os
+critérios, as limitações e como comparar um candidato já treinado.
+
 ## Interface
 
 Após gerar o checkpoint:

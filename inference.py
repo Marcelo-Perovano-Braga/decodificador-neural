@@ -60,6 +60,7 @@ def classify_traces(
     trained_current_range: tuple[float, float] | None = None,
     batch_size: int = 64,
     cancelled: Callable[[], bool] | None = None,
+    temperature: float = 1.0,
 ) -> list[InferenceResult]:
     """Classify independent traces in bounded batches, preserving row order.
 
@@ -80,6 +81,8 @@ def classify_traces(
         raise ValueError("batch_size and minimum_spikes must be positive.")
     if not 0 <= confidence_threshold <= 1:
         raise ValueError("confidence_threshold must be between zero and one.")
+    if not np.isfinite(temperature) or temperature <= 0:
+        raise ValueError("temperature must be finite and positive.")
     if currents is not None:
         currents = np.asarray(currents, dtype=np.float32)
         if currents.shape != (values.shape[0],):
@@ -134,7 +137,7 @@ def classify_traces(
             logits = model(tensor)
             if tuple(logits.shape) != (len(indices), len(class_codes)):
                 raise ValueError("Model output does not match the configured classes.")
-            probabilities = torch.softmax(logits, dim=1)
+            probabilities = torch.softmax(logits / temperature, dim=1)
             confidence_tensors, index_tensors = probabilities.max(dim=1)
             confidences = confidence_tensors.cpu().tolist()
             predictions = index_tensors.cpu().tolist()
@@ -168,6 +171,7 @@ def classify_trace(
     device: torch.device,
     current: float | None = None,
     trained_current_range: tuple[float, float] | None = None,
+    temperature: float = 1.0,
 ) -> InferenceResult:
     return classify_traces(
         np.asarray(trace, dtype=np.float32).reshape(1, -1), model,
@@ -180,4 +184,5 @@ def classify_trace(
         device=device,
         currents=np.asarray([current]) if current is not None else None,
         trained_current_range=trained_current_range,
+        temperature=temperature,
     )[0]

@@ -61,6 +61,9 @@ def load_frozen_checkpoint(path: Path):
     threshold = float(checkpoint.get("confidence_threshold", 0.7))
     if not np.isfinite(threshold) or not 0 <= threshold <= 1:
         raise ValueError("Invalid checkpoint confidence threshold.")
+    temperature = float(checkpoint.get("temperature", 1.0))
+    if not np.isfinite(temperature) or temperature <= 0:
+        raise ValueError("Invalid checkpoint calibration temperature.")
     model = NeuronClassifier1D().eval()
     model.load_state_dict(checkpoint["model_state"])
     model = model.for_inference()
@@ -90,7 +93,7 @@ def frozen_probabilities(traces, model, checkpoint, *, batch_size=64) -> np.ndar
             logits = model(torch.from_numpy(inputs).unsqueeze(1))
             if tuple(logits.shape) != (len(rows), 3):
                 raise ValueError("Unexpected frozen model output shape.")
-            probabilities[rows] = torch.softmax(logits, dim=1).cpu().numpy()[:, order]
+            probabilities[rows] = torch.softmax(logits / float(checkpoint.get("temperature", 1.0)), dim=1).cpu().numpy()[:, order]
     return probabilities
 
 
@@ -294,6 +297,8 @@ def run_study(
     baselines, source, training_hashes = fit_baselines(
         config, database=database, synthetic_samples=synthetic_samples, burst_isi_ms=burst_isi_ms,
     )
+    if checkpoint.get("training_protocol"):
+        source["provenance_limit"] += " This baseline-fit cohort is separate from the robust CNN's augmented training corpus; this is not an identical-training-data architecture comparison."
     output.mkdir(parents=True, exist_ok=True)
     status_path = output / "status.json"
     status_path.write_text(json.dumps({"status": "running"}) + "\n")
@@ -356,6 +361,8 @@ def run_study(
             "checkpoint_path": str(checkpoint_path.resolve()), "baseline_source": source,
             "cnn_normalization": checkpoint["normalization"],
             "cnn_confidence_threshold": float(checkpoint.get("confidence_threshold", 0.7)),
+            "cnn_temperature": float(checkpoint.get("temperature", 1.0)),
+            "cnn_training_profiles": checkpoint.get("training_profiles", ["constant"]),
             "cnn_class_order": list(checkpoint["class_codes"]),
             "config": config.to_dict(), "seeds": seeds, "samples_per_class": samples_per_class,
             "out_degree_requested": out_degree, "burst_isi_ms": burst_isi_ms,
@@ -372,7 +379,7 @@ def run_study(
             "baseline_models": {name: baseline.to_dict() for name, baseline in baselines.items()},
             "interpretation": [
                 "CNN weights and training normalization are frozen. No calibration, fine-tuning or test-based model selection is performed.",
-                "Held-out means excluded from the repository's constant-current training protocol or strictly outside its recorded drive range. Historical checkpoint provenance beyond its metadata cannot be proven by this tool.",
+                "Held-out stimulus families are determined using checkpoint training_profiles (legacy default: constant). External current ranges refer to constant-current base amplitudes; augmented waveforms may reach those instantaneous values. Historical checkpoint provenance beyond its metadata cannot be proven by this tool.",
                 "Gaussian parameter jitter has unbounded support: larger jitter is a distribution shift, not a strictly disjoint held-out parameter band.",
                 "Noise, jitter and network-strength sweeps use paired latent draws within each seed. Pulse-onset comparisons are within a withheld pulse family, not one-factor comparisons with a constant stimulus.",
                 "The current CLI/UI prior domain-rejection policy is bypassed for diagnostic CNN predictions. Secondary coverage uses observed activity and checkpoint confidence only; these predictions are not operational validation.",

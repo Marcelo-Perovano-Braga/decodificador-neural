@@ -41,8 +41,8 @@ def main() -> int:
         parser.error("Checkpoint missing. Supply your existing trained --checkpoint; this tool never trains or substitutes the CNN.")
     torch.set_num_threads(args.threads)
     try:
-        _, _, config = load_frozen_checkpoint(args.checkpoint)
-        conditions = make_protocol(config)
+        _, checkpoint, config = load_frozen_checkpoint(args.checkpoint)
+        conditions = make_protocol(config, training_profiles=checkpoint.get("training_profiles", ["constant"]))
         if args.list_conditions:
             for condition in conditions:
                 print(f"{condition.name}: {condition.axis}" + (f" · HELD OUT: {condition.held_out_reason}" if condition.held_out_reason else ""))
