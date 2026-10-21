@@ -94,6 +94,27 @@ Após gerar o checkpoint:
 python main_app.py
 ```
 
+### Tela cheia e fundo neural
+
+- **F11** ou o botão de expandir no canto superior direito alterna a tela cheia.
+- **Esc** sai da tela cheia. O tamanho anterior é recuperado; uma janela que
+  estava maximizada volta ao estado maximizado.
+- Para iniciar diretamente em tela cheia: `python main_app.py --fullscreen`.
+  O executável também aceita `--fullscreen` após ser reconstruído.
+- O botão com ícone de imagem, ao lado do controle de tema, ativa ou desativa
+  o fundo neural. O fundo se adapta aos temas escuro e claro.
+
+A ilustração é estática e decorativa, sem relação com os disparos da simulação.
+É incluída no aplicativo e não exige conexão com a internet. A imagem mantém
+suas proporções e recebe um recorte central para preencher a janela. A versão
+ajustada é armazenada em cache e reutilizada; não há animação nem timer extra.
+Redimensionamento, escala de tela, tema ou ativação do fundo atualizam o cache.
+Gráficos e tabelas conservam suas próprias superfícies para leitura dos dados.
+Sem o arquivo de imagem, a interface utiliza um fundo de cor uniforme.
+
+O arquivo está em `assets/neural_background.png`; a origem, o prompt e a
+descrição de uso estão em [assets/neural_background.md](assets/neural_background.md).
+
 ### Atualização de uma instalação já treinada
 
 O checkpoint anterior continua compatível; não é necessário treinar novamente.
