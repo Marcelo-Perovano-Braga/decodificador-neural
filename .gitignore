@@ -15,3 +15,4 @@ weights/*.pt
 artifacts/*.csv
 artifacts/*.json
 artifacts/*.md
+artifacts/research/

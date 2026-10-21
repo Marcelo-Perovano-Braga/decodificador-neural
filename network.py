@@ -12,7 +12,7 @@ from math import ceil
 
 import numpy as np
 
-from simulation import IzhikevichBatch, _check_cancelled, _step_count
+from simulation import IzhikevichBatch, _check_cancelled, _step_count, _validate_current_shape
 
 
 MAX_OUT_DEGREE = 1_000
@@ -169,6 +169,7 @@ def simulate_connected_batch(
     a, b, c, d, external = (np.asarray(values, dtype=np.float32) for values in (
         batch.a, batch.b, batch.c, batch.d, batch.current,
     ))
+    _validate_current_shape(external, size, steps)
     traces = np.empty((size, steps), dtype=np.float32, order="F")
     traces[:, 0] = -65.0
     recovery = b * traces[:, 0]
@@ -207,7 +208,8 @@ def simulate_connected_batch(
                     break
                 if has_spikes:
                     voltage[spiking] = 30.0
-                dv = 0.04 * voltage * voltage + 5.0 * voltage + 140.0 - recovery + external
+                drive = external[:, step] if external.ndim == 2 else external
+                dv = 0.04 * voltage * voltage + 5.0 * voltage + 140.0 - recovery + drive
                 dv += synaptic
                 du = a * (b * voltage - recovery)
                 next_voltage = voltage + dv * dt_ms
