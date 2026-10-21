@@ -7,6 +7,35 @@ TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
 
 @unittest.skipUnless(TORCH_AVAILABLE, "PyTorch is not installed")
 class ModelTests(unittest.TestCase):
+    def test_inference_fusion_preserves_outputs_and_source_checkpoint(self):
+        from copy import deepcopy
+        import torch
+        from models import NeuronClassifier1D
+
+        torch.manual_seed(77)
+        model = NeuronClassifier1D()
+        with torch.no_grad():
+            for layer in model.modules():
+                if isinstance(layer, torch.nn.BatchNorm1d):
+                    layer.running_mean.normal_()
+                    layer.running_var.uniform_(0.2, 2.0)
+                    layer.weight.normal_()
+                    layer.bias.normal_()
+        state = deepcopy(model.state_dict())
+        reference = deepcopy(model).eval()
+        optimized = model.for_inference()
+        self.assertTrue(model.training)
+        self.assertFalse(optimized.training)
+        self.assertTrue(any(isinstance(layer, torch.nn.BatchNorm1d) for layer in model.modules()))
+        self.assertFalse(any(isinstance(layer, torch.nn.BatchNorm1d) for layer in optimized.modules()))
+        self.assertEqual(state.keys(), model.state_dict().keys())
+        for name, value in model.state_dict().items():
+            torch.testing.assert_close(value, state[name], rtol=0, atol=0)
+        with torch.inference_mode():
+            for steps in (513, 2000):
+                values = torch.randn(7, 1, steps)
+                torch.testing.assert_close(optimized(values), reference(values), rtol=1e-5, atol=1e-6)
+
     def test_classifier_output_shape(self):
         import torch
 

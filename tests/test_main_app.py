@@ -104,6 +104,47 @@ class PopulationInterfaceTests(unittest.TestCase):
         self.assertEqual(window.counts_table.item(0, 1).text(), "—")
         self.assertEqual(window.confusion_table.item(0, 0).text(), "—")
 
+    def test_connected_controls_results_and_switch_back_to_independent(self):
+        window = self.window()
+        self.configure(window, (3, 2, 3))
+        window.network_check.setChecked(True)
+        window.out_degree_spin.setValue(4)
+        window._submit_request()
+        wait_until(lambda: window.result.population.request.network is not None)
+        result = window.result
+        graph = result.population.network_activity.network
+        self.assertEqual(graph.synapse_count, 32)
+        self.assertEqual(result.statistics.total, 8)
+        self.assertEqual(window.table_model.rowCount(), 8)
+        self.assertIn("experimental", window.status_label.text())
+        self.assertEqual(window.accuracy_card.title_label.text(), "Concordância experimental")
+        self.assertIsNotNone(window.rate_curve.yData)
+        self.assertIn("32 sinapses", window.network_detail.text())
+        window.neuron_selector.setValue(8)
+        self.assertIn("Neurônio 8", window.connection_detail.text())
+        np.testing.assert_array_equal(window.curve.yData, result.population.traces[7])
+        self.assertIs(window.result, result)
+        window.network_check.setChecked(False)
+        window._submit_request()
+        wait_until(lambda: window.result.population.request.network is None)
+        self.assertIsNone(window.result.population.network_activity)
+        self.assertIn("Modo independente", window.network_detail.text())
+        self.assertTrue(window.rate_curve.yData is None or not window.rate_curve.yData.size)
+        self.assertEqual(window.accuracy_card.title_label.text(), "Acerto dos classificados")
+
+    def test_network_budget_error_can_recover_to_independent_mode(self):
+        window = self.window(with_model=False)
+        window.update_timer.stop()
+        for spin in window.count_spins:
+            spin.setValue(100_000)
+        window.network_check.setChecked(True)
+        window._submit_request()
+        self.assertIsNone(window.result)
+        self.assertIn("limite", window.status_label.text())
+        window.network_check.setChecked(False)
+        self.configure(window, (2, 1, 1))
+        self.assertEqual(window.result.population.size, 4)
+
 
 if __name__ == "__main__":
     unittest.main()

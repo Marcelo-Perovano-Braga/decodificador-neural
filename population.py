@@ -1,4 +1,4 @@
-"""Independent-neuron populations and statistics for the desktop demonstration."""
+"""Independent and connected neuron populations for the desktop demonstration."""
 
 from __future__ import annotations
 
@@ -10,13 +10,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from config import CLASS_CODES, IZHIKEVICH_PARAMETERS, SimulationConfig
+from network import NetworkActivity, NetworkConfig, build_sparse_network, simulate_connected_batch
 from simulation import IzhikevichBatch, add_observation_noise, count_spikes, simulate_izhikevich_batch
 
 if TYPE_CHECKING:
     from inference import InferenceResult
 
 
-MAX_NEURONS_PER_CLASS = 1000
+MAX_NEURONS_PER_CLASS = 100_000
 RASTER_PREVIEW_SIZE = 200
 
 
@@ -26,6 +27,7 @@ class PopulationRequest:
     current: float = 10.0
     seed: int = 42
     varied: bool = True
+    network: NetworkConfig | None = None
 
     def __post_init__(self) -> None:
         if len(self.counts) != len(CLASS_CODES) or any(
@@ -39,6 +41,10 @@ class PopulationRequest:
             raise ValueError("O estímulo deve ser finito.")
         if self.seed < 0:
             raise ValueError("A semente não pode ser negativa.")
+        if self.network is not None:
+            if not isinstance(self.network, NetworkConfig):
+                raise ValueError("Configuração de rede inválida.")
+            self.network.degree_for(sum(self.counts))
 
 
 @dataclass(frozen=True)
@@ -48,6 +54,7 @@ class Population:
     traces: np.ndarray
     labels: np.ndarray
     spike_counts: np.ndarray
+    network_activity: NetworkActivity | None = None
 
     @property
     def size(self) -> int:
@@ -99,7 +106,7 @@ def simulate_population(
     *,
     cancelled: Callable[[], bool] | None = None,
 ) -> Population:
-    """Simulate a population without introducing connections or changing labels."""
+    """Keep the independent baseline and optionally add sparse synaptic drive."""
 
     check_cancelled(cancelled)
     labels = np.repeat(np.arange(len(CLASS_CODES)), request.counts).astype(np.int64)
@@ -119,12 +126,24 @@ def simulate_population(
         **parameters,
         current=np.full(labels.size, request.current, dtype=np.float32),
     )
-    traces = simulate_izhikevich_batch(batch, time_ms=config.time_ms, dt_ms=config.dt_ms)
+    activity = None
+    if request.network is None:
+        traces = simulate_izhikevich_batch(
+            batch, time_ms=config.time_ms, dt_ms=config.dt_ms, cancelled=cancelled,
+        )
+    else:
+        network = build_sparse_network(labels, request.network, request.seed, cancelled=cancelled)
+        traces, activity = simulate_connected_batch(
+            batch, network, time_ms=config.time_ms, dt_ms=config.dt_ms, cancelled=cancelled,
+        )
     check_cancelled(cancelled)
     if request.varied and config.observation_noise_std:
-        traces = add_observation_noise(traces, config.observation_noise_std, rng)
+        add_observation_noise(
+            traces, config.observation_noise_std, rng, out=traces, cancelled=cancelled,
+        )
     check_cancelled(cancelled)
-    return Population(request, config.dt_ms, traces, labels, count_spikes(traces))
+    spikes = activity.spike_counts if activity is not None else count_spikes(traces, cancelled=cancelled)
+    return Population(request, config.dt_ms, traces, labels, spikes, activity)
 
 
 def summarize_population(
@@ -187,8 +206,14 @@ def build_raster_preview(
     if results is not None and len(results) != population.size:
         raise ValueError("Each neuron must have exactly one inference result.")
     selected = np.linspace(0, population.size - 1, min(limit, population.size), dtype=int)
-    rows, steps = np.nonzero(population.traces[selected] >= 29.0)
-    neuron_indices = selected[rows]
+    if population.network_activity is None:
+        rows, steps = np.nonzero(population.traces[selected] >= 29.0)
+        neuron_indices = selected[rows]
+    else:
+        activity = population.network_activity
+        mask = np.isin(activity.spike_neurons, selected)
+        steps = activity.spike_steps[mask]
+        neuron_indices = activity.spike_neurons[mask]
     groups = np.full(population.size, -1, dtype=np.int8)
     if results is not None:
         for index, result in enumerate(results):

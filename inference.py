@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Sequence
 from concurrent.futures import CancelledError
 from dataclasses import dataclass
@@ -11,6 +12,26 @@ import torch
 from torch import nn
 
 from simulation import count_spikes
+
+
+def default_cpu_threads() -> int:
+    """Use bounded CPU parallelism while leaving scheduling room for the UI."""
+    return min(8, max(1, (os.cpu_count() or 1) - 1))
+
+
+def _gather_traces(values: np.ndarray, indices: list[int]) -> np.ndarray:
+    """Copy sorted rows in contiguous runs, including from time-major storage."""
+    if values.flags.c_contiguous:
+        return values[indices]
+    # Fancy row indexing copies one strided neuron at a time. Sliced copies
+    # let NumPy traverse the contiguous timestep columns within each run.
+    output = np.empty((len(indices), values.shape[1]), dtype=np.float32)
+    start = 0
+    for end in range(1, len(indices) + 1):
+        if end == len(indices) or indices[end] != indices[end - 1] + 1:
+            output[start:end] = values[indices[start]:indices[end - 1] + 1]
+            start = end
+    return output
 
 
 @dataclass(frozen=True)
@@ -73,11 +94,16 @@ def classify_traces(
             raise CancelledError()
 
     check_cancelled()
-    spikes = count_spikes(values)
-    finite = np.isfinite(values).all(axis=1)
+    spikes = count_spikes(values, cancelled=cancelled)
+    finite = np.empty(values.shape[0], dtype=bool)
+    for start in range(0, values.shape[0], 512):
+        check_cancelled()
+        finite[start:start + 512] = np.isfinite(values[start:start + 512]).all(axis=1)
     results = []
     eligible = []
     for index, spike_count in enumerate(spikes):
+        if index % 512 == 0:
+            check_cancelled()
         reason = None
         if not finite[index]:
             reason = "sinal contém valores não finitos"
@@ -101,7 +127,9 @@ def classify_traces(
         for start in range(0, len(eligible), batch_size):
             check_cancelled()
             indices = eligible[start:start + batch_size]
-            normalized = (values[indices] - normalization_mean) / normalization_std
+            normalized = _gather_traces(values, indices)
+            normalized -= normalization_mean
+            normalized /= normalization_std
             tensor = torch.from_numpy(normalized).unsqueeze(1).to(device)
             logits = model(tensor)
             if tuple(logits.shape) != (len(indices), len(class_codes)):

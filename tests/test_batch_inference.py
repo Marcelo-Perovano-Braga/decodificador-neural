@@ -52,16 +52,20 @@ class BatchInferenceTests(unittest.TestCase):
         traces[1, 2:] = 0
         traces[6, 3] = np.nan
         currents = np.asarray([10, 10, 10, 10, 50, 10, 10])
-        model = self.counting_model()
-        results = classify_traces(
-            traces, model, **self.options(), currents=currents,
-            trained_current_range=(5.0, 30.0), batch_size=2,
-        )
-        self.assertEqual(model.batch_sizes, [2, 2])
-        self.assertEqual([item.class_code for item in results], ["FS", None, "RS", "CH", None, "RS", None])
-        self.assertIn("atividade insuficiente", results[1].reason)
-        self.assertIn("fora do domínio", results[4].reason)
-        self.assertIn("não finitos", results[6].reason)
+        for order in ("C", "F"):
+            with self.subTest(order=order):
+                values = np.array(traces, order=order)
+                model = self.counting_model()
+                results = classify_traces(
+                    values, model, **self.options(), currents=currents,
+                    trained_current_range=(5.0, 30.0), batch_size=2,
+                )
+                self.assertEqual(model.batch_sizes, [2, 2])
+                self.assertEqual([item.class_code for item in results], ["FS", None, "RS", "CH", None, "RS", None])
+                self.assertIn("atividade insuficiente", results[1].reason)
+                self.assertIn("fora do domínio", results[4].reason)
+                self.assertIn("não finitos", results[6].reason)
+                np.testing.assert_array_equal(values, traces)
 
     def test_population_cnn_inference_matches_single_neuron_inference(self):
         import torch
@@ -98,6 +102,46 @@ class BatchInferenceTests(unittest.TestCase):
         self.assertEqual(model.batch_sizes, [])
         self.assertEqual(len(results), 150)
         self.assertTrue(all(not result.determined for result in results))
+
+    def test_parallel_cpu_inference_preserves_predictions(self):
+        import torch
+        from config import SimulationConfig
+        from inference import classify_traces
+        from models import NeuronClassifier1D
+        from population import PopulationRequest, simulate_population
+        torch.manual_seed(59)
+        model = NeuronClassifier1D()
+        population = simulate_population(PopulationRequest((13, 13, 13), current=30), SimulationConfig())
+        options = dict(self.options(), normalization_mean=-53.0, normalization_std=21.0,
+                       confidence_threshold=0.0)
+        old_threads = torch.get_num_threads()
+        try:
+            torch.set_num_threads(1)
+            single = classify_traces(population.traces, model, **options)
+            torch.set_num_threads(4)
+            parallel = classify_traces(population.traces, model.for_inference(), **options)
+        finally:
+            torch.set_num_threads(old_threads)
+        self.assertEqual([item.class_code for item in single], [item.class_code for item in parallel])
+        np.testing.assert_allclose(
+            [item.confidence for item in single], [item.confidence for item in parallel],
+            rtol=0, atol=1e-6,
+        )
+
+    def test_cancellation_during_preprocessing_never_calls_model(self):
+        from inference import classify_traces
+        model = self.counting_model()
+        checks = 0
+
+        def cancelled():
+            nonlocal checks
+            checks += 1
+            return checks >= 4
+
+        with self.assertRaises(CancelledError):
+            classify_traces(np.zeros((2049, 20), dtype=np.float32), model,
+                            **self.options(), cancelled=cancelled)
+        self.assertEqual(model.batch_sizes, [])
 
 
 if __name__ == "__main__":
