@@ -86,6 +86,26 @@ python train_pipeline.py --regenerate --samples-per-class 60 --epochs 3 --patien
 
 Esse ensaio não deve ser utilizado como resultado científico.
 
+## Expansão da avaliação: robustez e condições retidas
+
+Para avaliar o checkpoint existente sem retreinar, no mesmo ambiente Python:
+
+```powershell
+python evaluate_research.py
+```
+
+O estudo compara a CNN congelada com baselines de taxa e atributos temporais,
+varre ruído, variação paramétrica, início do estímulo e força sináptica, e
+avalia formas de entrada/faixas de corrente ausentes do protocolo original.
+Usa somente o split de treino do banco original para ajustar os baselines.
+Todos os neurônios de avaliação, inclusive silenciosos, entram na acurácia total;
+cobertura e acurácia entre aceitos são informadas separadamente.
+
+O comando cria relatórios HTML, CSV e JSON em uma pasta nova dentro de
+`artifacts/research/`. Esta ferramenta é executada por Python fora da interface;
+não exige reconstruir o executável. Veja [RESEARCH.md](RESEARCH.md) para os
+requisitos, o protocolo, exemplos de comandos e a interpretação dos resultados.
+
 ## Interface
 
 Após gerar o checkpoint:

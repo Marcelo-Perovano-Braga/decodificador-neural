@@ -49,6 +49,13 @@ def _step_count(time_ms: float, dt_ms: float) -> int:
     return steps
 
 
+def _validate_current_shape(current: np.ndarray, size: int, steps: int) -> None:
+    if current.shape not in ((size,), (size, steps)):
+        raise ValueError("current must have shape (neurons,) or (neurons, time_steps).")
+    if not np.isfinite(current).all():
+        raise ValueError("Input currents must be finite.")
+
+
 def simulate_izhikevich_batch(
     batch: IzhikevichBatch,
     *,
@@ -72,6 +79,7 @@ def simulate_izhikevich_batch(
     d = np.asarray(batch.d, dtype=np.float32)
     current = np.asarray(batch.current, dtype=np.float32)
     sample_count = a.shape[0]
+    _validate_current_shape(current, sample_count, steps)
 
     # Each timestep touches every neuron. Keep those columns contiguous;
     # callers still receive the same (neurons, time_steps) array and values.
@@ -89,7 +97,8 @@ def simulate_izhikevich_batch(
         if has_spikes:
             voltage[spiking] = 30.0
 
-        dv = 0.04 * voltage * voltage + 5.0 * voltage + 140.0 - recovery + current
+        drive = current[:, step] if current.ndim == 2 else current
+        dv = 0.04 * voltage * voltage + 5.0 * voltage + 140.0 - recovery + drive
         du = a * (b * voltage - recovery)
         next_voltage = voltage + dv * dt_ms
         next_recovery = recovery + du * dt_ms
