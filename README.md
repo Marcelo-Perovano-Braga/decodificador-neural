@@ -110,8 +110,8 @@ produzidas.
 ### Populações independentes
 
 Defina separadamente as quantidades de neurônios **RS**, **CH** e **FS**, de zero
-a 1.000 por classe, com pelo menos um neurônio no total. A população inicial
-contém dez de cada padrão. O controle de estímulo aplica a mesma intensidade a
+a 100.000 por classe (300.000 no total), com pelo menos um neurônio no total.
+A população inicial contém dez de cada padrão. O controle de estímulo aplica a mesma intensidade a
 todos os neurônios; ele não representa a quantidade de neurônios nem a quantidade
 de disparos.
 
@@ -158,6 +158,48 @@ canceladas ou descartadas, mantendo apenas a configuração pendente mais recent
 Enquanto o cálculo termina, gráficos e tabelas permanecem identificados como os
 resultados da última simulação concluída. Selecionar outro neurônio utiliza os
 resultados em memória, sem simular ou classificar a população novamente.
+
+O simulador organiza os valores de um mesmo instante de forma contígua na
+memória. Ruído, contagem de disparos e verificação de sinais usam buffers
+limitados; a interface aplica o ruído no próprio armazenamento da população.
+A simulação verifica cancelamento a cada 32 passos e entre blocos de ruído,
+evitando esperar por uma simulação inteira que já ficou obsoleta.
+
+A interface funde as normalizações BatchNorm nas convoluções de uma cópia
+exclusiva para inferência, sem modificar o modelo treinável nem o checkpoint.
+Ela utiliza até oito threads de inferência na CPU, reservando pelo
+menos um processador lógico para outras tarefas quando disponível. A equação,
+o passo temporal, os traços completos, a sequência de ruído para uma mesma
+semente e o checkpoint foram preservados. A inferência mantém precisão float32;
+pequenas diferenças de arredondamento entre kernels paralelos são possíveis.
+
+### Medir capacidade no seu computador
+
+No mesmo ambiente da interface, utilizando seu checkpoint já treinado:
+
+```powershell
+python benchmark_population.py --neurons 3000 10000 100000 --threads 8 --output artifacts/population_benchmark.json
+```
+
+O benchmark realiza três medições por tamanho, após aquecimento, e inclui
+simulação, ruído, inferência, estatísticas e preparação do raster. Não inclui
+desenho da interface nem manter a população anterior em memória. Para comparar
+o uso da CPU, execute novamente com `--threads 1` ou `--threads 4`. Sem checkpoint,
+`--simulation-only` mede apenas a simulação e preparação dos resultados; esse
+tempo não representa o custo completo de classificação.
+
+Após comparar os resultados, a interface também aceita `python main_app.py
+--threads 4` (ou o executável com `--threads 4`) para utilizar o número de threads
+mais adequado ao computador. Sem esse argumento, a seleção é automática.
+
+Com a janela padrão de 200 ms e passo de 0,1 ms, cada neurônio ocupa 8.000 bytes
+somente em potencial armazenado. Durante uma atualização, a interface pode
+manter a população anterior e a nova: aproximadamente `16.000 × neurônios`
+bytes, além de parâmetros, previsões, buffers do modelo e da interface. O limite
+configurado não garante atualização instantânea nem execução em tempo real.
+
+As fórmulas de memória, hipóteses sobre conexões esparsas e densas e estimativas
+para um Ryzen 7 5700X3D com 32 GiB estão em [CAPACITY.md](CAPACITY.md).
 
 A interface mantém alternância entre temas escuro e claro, indicação do
 checkpoint carregado e os estados **correto**, **divergente** e **indeterminado**.

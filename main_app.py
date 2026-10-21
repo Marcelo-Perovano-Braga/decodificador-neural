@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import secrets
 import sys
 from functools import partial
@@ -49,6 +50,7 @@ from qfluentwidgets import (
 )
 
 from config import CLASS_CODES, CLASS_NAMES, SimulationConfig
+from inference import default_cpu_threads
 from models import NeuronClassifier1D
 from population import MAX_NEURONS_PER_CLASS, PopulationRequest
 from population_table import PopulationTableModel
@@ -182,7 +184,7 @@ class IzhikevichApp(QMainWindow):
                 name: simulation[name] for name in SimulationConfig.__dataclass_fields__
                 if name in simulation
             })
-            self.model = model
+            self.model = model.for_inference()
             self.checkpoint = checkpoint
         except Exception as exc:
             self.model_error = str(exc)
@@ -258,7 +260,7 @@ class IzhikevichApp(QMainWindow):
             spin.setRange(0, MAX_NEURONS_PER_CLASS)
             spin.setValue(10)
             spin.setKeyboardTracking(False)
-            spin.setFixedWidth(152)
+            spin.setFixedWidth(168)
             row.addWidget(spin)
             self.count_spins.append(spin)
             controls.addLayout(row)
@@ -701,9 +703,15 @@ class IzhikevichApp(QMainWindow):
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--threads", type=int, default=default_cpu_threads(),
+                        help="CPU inference threads (default: up to 8, leaving one logical CPU free)")
+    args, qt_args = parser.parse_known_args()
+    if args.threads < 1:
+        parser.error("--threads must be positive.")
     configure_windows_process_identity()
-    torch.set_num_threads(1)
-    app = QApplication(sys.argv)
+    torch.set_num_threads(args.threads)
+    app = QApplication([sys.argv[0], *qt_args])
     app.setApplicationName("Classificador Izhikevich")
     icon = application_icon()
     if not icon.isNull():

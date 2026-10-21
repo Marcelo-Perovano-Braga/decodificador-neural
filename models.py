@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import torch
 from torch import nn
+from torch.nn.utils.fusion import fuse_conv_bn_eval
 
 
 class NeuronClassifier1D(nn.Module):
@@ -35,6 +38,22 @@ class NeuronClassifier1D(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(128, num_classes),
         )
+
+    def for_inference(self) -> NeuronClassifier1D:
+        """Fold evaluation-only normalization into a separate runtime copy.
+
+        The trainable architecture, source model and checkpoint state remain
+        intact. Fusion keeps float32 computation and the same learned function,
+        with the usual floating-point rounding differences between kernels.
+        """
+        optimized = deepcopy(self).eval()
+        for index in range(len(optimized.features) - 1):
+            convolution = optimized.features[index]
+            normalization = optimized.features[index + 1]
+            if isinstance(convolution, nn.Conv1d) and isinstance(normalization, nn.BatchNorm1d):
+                optimized.features[index] = fuse_conv_bn_eval(convolution, normalization)
+                optimized.features[index + 1] = nn.Identity()
+        return optimized
 
     def forward(self, voltage_windows: torch.Tensor) -> torch.Tensor:
         if voltage_windows.ndim != 3 or voltage_windows.shape[1] != 1:

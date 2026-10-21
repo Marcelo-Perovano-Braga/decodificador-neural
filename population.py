@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from inference import InferenceResult
 
 
-MAX_NEURONS_PER_CLASS = 1000
+MAX_NEURONS_PER_CLASS = 100_000
 RASTER_PREVIEW_SIZE = 200
 
 
@@ -119,12 +119,16 @@ def simulate_population(
         **parameters,
         current=np.full(labels.size, request.current, dtype=np.float32),
     )
-    traces = simulate_izhikevich_batch(batch, time_ms=config.time_ms, dt_ms=config.dt_ms)
+    traces = simulate_izhikevich_batch(
+        batch, time_ms=config.time_ms, dt_ms=config.dt_ms, cancelled=cancelled,
+    )
     check_cancelled(cancelled)
     if request.varied and config.observation_noise_std:
-        traces = add_observation_noise(traces, config.observation_noise_std, rng)
+        add_observation_noise(
+            traces, config.observation_noise_std, rng, out=traces, cancelled=cancelled,
+        )
     check_cancelled(cancelled)
-    return Population(request, config.dt_ms, traces, labels, count_spikes(traces))
+    return Population(request, config.dt_ms, traces, labels, count_spikes(traces, cancelled=cancelled))
 
 
 def summarize_population(
