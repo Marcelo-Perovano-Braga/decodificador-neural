@@ -107,19 +107,60 @@ Ao extrair o projeto em uma pasta nova, copie `weights/classifier.pt` da pasta
 anterior. Também é possível copiar `artifacts/` para manter as métricas já
 produzidas.
 
-A lista seleciona o padrão usado pelo simulador. A IA recebe somente o traço de
-potencial e deve identificar esse padrão. A interface compara a previsão com o
-rótulo esperado sem fornecer o rótulo como entrada ao modelo.
+### Populações independentes
 
-A tela reformulada apresenta:
+Defina separadamente as quantidades de neurônios **RS**, **CH** e **FS**, de zero
+a 1.000 por classe, com pelo menos um neurônio no total. A população inicial
+contém dez de cada padrão. O controle de estímulo aplica a mesma intensidade a
+todos os neurônios; ele não representa a quantidade de neurônios nem a quantidade
+de disparos.
 
-- cartões separados para configuração, classificação e métricas da simulação;
-- indicador visual do carregamento do checkpoint;
-- estados **correto**, **divergente** e **indeterminado**;
-- barra animada de confiança;
-- alternância entre temas escuro e claro;
-- ícone próprio na janela, no Alt+Tab e na barra de tarefas do Windows;
-- traçado responsivo preservado com `pyqtgraph`.
+Os neurônios continuam sendo instâncias independentes, sem conexões sinápticas.
+A opção **Variação entre neurônios** utiliza a variação paramétrica e o ruído de
+observação registrados no checkpoint. Desmarque-a para visualizar as
+parametrizações centrais. A mesma semente e as mesmas configurações reproduzem
+a população; **Nova variação** troca a semente.
+
+A IA recebe apenas os traços de potencial, em lotes limitados a 64 neurônios,
+e produz uma classificação independente para cada um. Os rótulos esperados
+são usados somente para comparar os resultados. A arquitetura, os pesos e o
+pipeline de treinamento permanecem compatíveis com `weights/classifier.pt`.
+Os arquivos `.pth` da implementação antiga não substituem esse checkpoint.
+
+### Visualização e resultados
+
+- **Sinais:** raster dos instantes de disparo e traço completo do neurônio
+  selecionado. As cores do raster representam classes previstas; cinza indica
+  ausência de classificação determinada. Acima de 200 neurônios, o raster mostra
+  uma amostra visual uniformemente distribuída, identificada no subtítulo.
+- **Classificações individuais:** uma linha por neurônio, com classe esperada,
+  previsão, confiança, disparos e estado. Clique na linha para inspecionar seu
+  sinal. Uma hipótese marcada com `(?)` permanece indeterminada.
+- **Estatísticas:** contagens esperadas e previstas por classe, matriz de
+  confusão com coluna de indeterminados, cobertura e acerto entre classificados.
+  A cobertura é `classificados / total`; o acerto é `corretos / classificados`.
+  Se nenhum neurônio for classificado, o acerto aparece como indisponível.
+
+Todos os neurônios entram na inferência e nas estatísticas, inclusive os que
+não aparecem na amostra visual do raster. A seleção individual permite acessar
+o traço de qualquer neurônio. A redução de pontos para desenho preserva picos
+e não altera o sinal recebido pelo classificador.
+
+Essas estatísticas descrevem a simulação interativa e não substituem as métricas
+do teste retido. Sem checkpoint, a simulação continua disponível, mas previsões
+e métricas de classificação aparecem como indisponíveis.
+
+### Responsividade
+
+A simulação e a inferência executam em um único worker, separado da interface.
+Alterações rápidas dos controles são agrupadas; solicitações antigas são
+canceladas ou descartadas, mantendo apenas a configuração pendente mais recente.
+Enquanto o cálculo termina, gráficos e tabelas permanecem identificados como os
+resultados da última simulação concluída. Selecionar outro neurônio utiliza os
+resultados em memória, sem simular ou classificar a população novamente.
+
+A interface mantém alternância entre temas escuro e claro, indicação do
+checkpoint carregado e os estados **correto**, **divergente** e **indeterminado**.
 
 Os arquivos `assets/app_icon.png` e `assets/app_icon.ico` são incluídos no
 projeto. No Windows, a aplicação também define uma identidade própria para não
@@ -172,8 +213,13 @@ para distinguir todas as parametrizações.
 python -m unittest discover -s tests -v
 ```
 
-Os testes de simulação, banco de dados e métricas usam NumPy e a biblioteca
-padrão. Os testes da arquitetura também exigem PyTorch.
+Os testes de simulação, banco de dados, população e métricas usam NumPy e a
+biblioteca padrão. Os testes da arquitetura e da inferência em lote exigem
+PyTorch. Os testes de integração da interface e do worker exigem as dependências
+gráficas e executam com a plataforma Qt `offscreen`, sem abrir janelas. Eles
+verificam cancelamento, descarte de resultados antigos, seleção individual e
+contabilização dos resultados. Checkpoints de teste são fixtures não treinadas
+e não constituem validação da acurácia científica.
 
 ## Benchmark isolado
 
