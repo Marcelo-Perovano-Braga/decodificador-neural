@@ -16,7 +16,7 @@ from simulation import IzhikevichBatch, _check_cancelled, _step_count, _validate
 
 
 MAX_OUT_DEGREE = 1_000
-MAX_SYNAPSES = 10_000_000
+MAX_SYNAPSES = 1_000_000_000
 _BLOCK_SIZE = 256
 
 

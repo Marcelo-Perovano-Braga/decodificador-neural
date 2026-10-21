@@ -95,8 +95,10 @@ Only sources that fired send events. Construction and delivery use blocks of
 256 sources; stepping checks cancellation every 32 timesteps. The existing
 single worker discards stale results and retains only the latest pending job.
 
-The budget is 10 million synapses and at most 1,000 outgoing connections per
-neuron. Above-budget requests fail before topology/traces allocation. This is
+The budget is one billion synapses, one million neurons total and at most 1,000
+outgoing connections per neuron. Defaults remain 30 neurons and 100 outgoing
+connections (clamped to N - 1 for small populations); the preset remains 10,000
+neurons. Above-budget requests fail before topology/traces allocation. This is
 an application guard, not a measured hardware limit. High firing rates increase
 event processing cost. Strong recurrent excitation or inhibition can produce
 unusual dynamics; non-finite numerical results fail explicitly rather than being

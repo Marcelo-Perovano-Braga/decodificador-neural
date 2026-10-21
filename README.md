@@ -106,6 +106,26 @@ O comando cria relatórios HTML, CSV e JSON em uma pasta nova dentro de
 não exige reconstruir o executável. Veja [RESEARCH.md](RESEARCH.md) para os
 requisitos, o protocolo, exemplos de comandos e a interpretação dos resultados.
 
+### Treinar e adotar um modelo candidato
+
+Para treinar com entradas e redes mais variadas, comparar com o checkpoint
+atual e adotá-lo somente se atender a todos os critérios:
+
+```powershell
+python train_robust.py --seed 17029 --adopt-if-superior
+```
+
+O protocolo expandido, com envelopes aleatórios e confirmação nova, está em
+[EXPANDED_ROBUST_TRAINING.md](EXPANDED_ROBUST_TRAINING.md). Use `--protocol 2`
+para treiná-lo; `--protocol 1` preserva a reprodução do primeiro estudo.
+
+O ajuste usa dados novos, com splits distintos para treino, seleção de época
+e calibração de confiança. A comparação usa novas sementes, duas famílias de
+estímulo ausentes do ajuste e critérios que exigem ganhos sem regressões grandes
+nas condições originais. Uma adoção bem-sucedida preserva uma cópia verificada
+do checkpoint anterior. Veja [ROBUST_TRAINING.md](ROBUST_TRAINING.md) para os
+critérios, as limitações e como comparar um candidato já treinado.
+
 ## Interface
 
 Após gerar o checkpoint:
@@ -152,7 +172,8 @@ produzidas.
 ### Populações independentes
 
 Defina separadamente as quantidades de neurônios **RS**, **CH** e **FS**, de zero
-a 100.000 por classe (300.000 no total), com pelo menos um neurônio no total.
+a 1.000.000 por classe, respeitando o limite de **1.000.000 no total** entre
+as três classes, com pelo menos um neurônio no total.
 A população inicial contém dez de cada padrão. O controle de estímulo aplica a mesma intensidade a
 todos os neurônios; ele não representa a quantidade de neurônios nem a quantidade
 de disparos.
@@ -185,9 +206,12 @@ estímulo, a semente e a opção de variação selecionados.
   RS/CH/FS. Eles não representam uma identificação de tipos celulares reais.
 - A mesma semente reproduz parâmetros, conexões e papéis. Alterar apenas a
   força ou o atraso mantém a topologia, permitindo comparar os efeitos.
-- Há um limite de **10.000.000 de sinapses** e até 1.000 saídas por neurônio.
+- Há um limite de **1.000.000.000 de sinapses** e até 1.000 saídas por neurônio.
   Configurações acima do orçamento são rejeitadas antes de alocar a rede.
-  O modo independente mantém seu limite de 300.000 neurônios.
+  Os modos independente e conectado permitem até 1.000.000 de neurônios no total.
+  Por exemplo: 333.333 RS, 333.333 CH e 333.334 FS. Com 100 saídas por neurônio,
+  essa população tem 100 milhões de sinapses; com 1.000, chega a um bilhão.
+  Esses são limites de configuração, não resultados de um benchmark nessa escala.
 
 A aba **Rede** mostra a taxa de disparo de toda a população em janelas de até
 5 ms, a corrente sináptica média, as contagens de conexões entre grupos RS/CH/FS

@@ -132,11 +132,11 @@ class PopulationInterfaceTests(unittest.TestCase):
         self.assertTrue(window.rate_curve.yData is None or not window.rate_curve.yData.size)
         self.assertEqual(window.accuracy_card.title_label.text(), "Acerto dos classificados")
 
-    def test_network_budget_error_can_recover_to_independent_mode(self):
+    def test_population_budget_error_can_recover_to_independent_mode(self):
         window = self.window(with_model=False)
         window.update_timer.stop()
         for spin in window.count_spins:
-            spin.setValue(100_000)
+            spin.setValue(1_000_000)
         window.network_check.setChecked(True)
         window._submit_request()
         self.assertIsNone(window.result)
@@ -144,6 +144,22 @@ class PopulationInterfaceTests(unittest.TestCase):
         window.network_check.setChecked(False)
         self.configure(window, (2, 1, 1))
         self.assertEqual(window.result.population.size, 4)
+
+    def test_million_neuron_controls_submit_the_billion_synapse_boundary(self):
+        from unittest.mock import patch
+        window = self.window(with_model=False)
+        # Capture the request; this test must not allocate a billion targets.
+        with patch.object(window.runner, "submit") as submit:
+            for spin, value in zip(window.count_spins, (333_333, 333_333, 333_334), strict=True):
+                self.assertEqual(spin.maximum(), 1_000_000)
+                spin.setValue(value)
+            self.assertEqual(window.out_degree_spin.value(), 100)
+            window.network_check.setChecked(True)
+            window.out_degree_spin.setValue(1000)
+            window._submit_request()
+            request = submit.call_args.args[0]
+            self.assertEqual(sum(request.counts), 1_000_000)
+            self.assertEqual(request.network.out_degree, 1000)
 
 
 if __name__ == "__main__":

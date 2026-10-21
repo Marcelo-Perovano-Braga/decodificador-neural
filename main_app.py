@@ -57,7 +57,7 @@ from inference import default_cpu_threads
 from models import NeuronClassifier1D
 from neural_background import NeuralBackground
 from network import MAX_OUT_DEGREE, MAX_SYNAPSES, NetworkConfig
-from population import MAX_NEURONS_PER_CLASS, PopulationRequest
+from population import MAX_NEURONS_PER_CLASS, MAX_NEURONS_TOTAL, PopulationRequest
 from population_table import PopulationTableModel
 from population_worker import PopulationResult, PopulationRunner, process_population
 
@@ -295,7 +295,7 @@ class IzhikevichApp(QMainWindow):
             row.addWidget(spin)
             self.count_spins.append(spin)
             controls.addLayout(row)
-        controls.addWidget(caption(f"Até {MAX_NEURONS_PER_CLASS} por classe. Conexões opcionais no controle de rede."))
+        controls.addWidget(caption(f"Até {MAX_NEURONS_TOTAL:,} neurônios no total, distribuídos entre RS, CH e FS."))
         controls.addSpacing(6)
         row = QHBoxLayout()
         row.addWidget(StrongBodyLabel("Estímulo aplicado"), 1)

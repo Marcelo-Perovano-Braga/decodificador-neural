@@ -8,8 +8,9 @@ equations, current storage and measurement instructions are in [NETWORKS.md](NET
 The 5700X3D has eight cores and sixteen threads
 ([AMD specifications](https://ir.amd.com/news-events/press-releases/detail/1177/amd-reveals-next-gen-desktop-processors-for-extreme-pc-gaming-and-creator-performance)).
 The application now uses up to eight CPU inference threads. Its configurable
-population cap is 100,000 per class, 300,000 total. This is a tested operating
-bound, not a mathematical hardware limit.
+population cap is 1,000,000 total, distributed freely among RS, CH and FS.
+This expanded configuration allowance is not a measured hardware limit or a
+full-scale benchmark result; the older measurements below retain their original scope.
 
 ## Independent neurons
 
@@ -37,8 +38,9 @@ Reserving roughly 8 GiB of a 32 GiB system for Windows, other applications,
 runtime/model buffers, and headroom leaves an illustrative 24 GiB data budget.
 Allowing another approximately 512 bytes per neuron for result objects and
 metadata gives a rough ceiling of 1.56 million independent neurons. A conservative
-planning range is **1–1.5 million, limited by memory**, with the app's cap raised
-and separately validated. This range does not promise interactive update speed.
+planning range is **1–1.5 million, limited by memory**. The application permits
+up to one million; its runtime and peak memory at that scale require local
+measurement. This range does not promise interactive update speed.
 
 Simulation duration matters directly: increasing the window from 0.2 to 1 second
 multiplies trace storage and stepping work by five. Reducing the timestep has a
@@ -48,7 +50,7 @@ similar effect. The current update preserves both settings and every trace.
 
 The connected implementation uses int32 targets and one shared outgoing weight
 per source, approximately `4*N*k + 9*N + 72` bytes for topology. Old and new
-populations can retain separate graphs. It has a 10-million-synapse application
+populations can retain separate graphs. It has a one-billion-synapse application
 budget; the 10,000-neuron / 100-outgoing preset has one million synapses. Actual
 spike event arrays add storage proportional to activity. These configured limits
 are below the hypothetical memory-only ceilings in the comparison below.
