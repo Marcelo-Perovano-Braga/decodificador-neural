@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pyqtgraph as pg
 import torch
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import QEvent, QTimer, Qt
+from PyQt6.QtGui import QIcon, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -31,6 +31,7 @@ from qfluentwidgets import (
     CaptionLabel,
     CheckBox,
     DoubleSpinBox,
+    FluentIcon,
     InfoBadge,
     InfoLevel,
     ProgressBar,
@@ -46,6 +47,7 @@ from qfluentwidgets import (
     TableWidget,
     Theme,
     TitleLabel,
+    ToolButton,
     setTheme,
     setThemeColor,
 )
@@ -53,6 +55,7 @@ from qfluentwidgets import (
 from config import CLASS_CODES, CLASS_NAMES, SimulationConfig
 from inference import default_cpu_threads
 from models import NeuronClassifier1D
+from neural_background import NeuralBackground
 from network import MAX_OUT_DEGREE, MAX_SYNAPSES, NetworkConfig
 from population import MAX_NEURONS_PER_CLASS, PopulationRequest
 from population_table import PopulationTableModel
@@ -140,9 +143,16 @@ class IzhikevichApp(QMainWindow):
         self.model_error: str | None = None
         self.result: PopulationResult | None = None
         self.is_light_theme = False
+        self._previous_window_state = Qt.WindowState.WindowNoState
         self._closing = False
         self.load_ai_model(checkpoint_path or resource_root() / "weights" / "classifier.pt")
         self.setup_ui()
+        self.fullscreen_shortcut = QShortcut(QKeySequence("F11"), self)
+        self.fullscreen_shortcut.setAutoRepeat(False)
+        self.fullscreen_shortcut.activated.connect(self.toggle_fullscreen)
+        self.escape_shortcut = QShortcut(QKeySequence("Escape"), self)
+        self.escape_shortcut.setEnabled(False)
+        self.escape_shortcut.activated.connect(self.exit_fullscreen)
         self.apply_visual_theme()
 
         processor = partial(
@@ -197,7 +207,7 @@ class IzhikevichApp(QMainWindow):
             self.model_error = str(exc)
 
     def setup_ui(self) -> None:
-        self.root = QWidget()
+        self.root = NeuralBackground(resource_root() / "assets" / "neural_background.png")
         self.root.setObjectName("appRoot")
         self.setCentralWidget(self.root)
         layout = QVBoxLayout(self.root)
@@ -234,6 +244,20 @@ class IzhikevichApp(QMainWindow):
         self.theme_switch.setOffText("Tema claro")
         self.theme_switch.checkedChanged.connect(self.on_theme_changed)
         layout.addWidget(self.theme_switch)
+        self.background_button = ToolButton(FluentIcon.PHOTO)
+        self.background_button.setFixedSize(36, 36)
+        self.background_button.setCheckable(True)
+        self.background_button.setChecked(True)
+        self.background_button.setToolTip("Fundo neural: ativar / desativar")
+        self.background_button.setAccessibleName("Fundo neural")
+        self.background_button.toggled.connect(self.root.set_artwork_enabled)
+        layout.addWidget(self.background_button)
+        self.fullscreen_button = ToolButton(FluentIcon.FULL_SCREEN)
+        self.fullscreen_button.setFixedSize(36, 36)
+        self.fullscreen_button.setToolTip("Tela cheia (F11)")
+        self.fullscreen_button.setAccessibleName("Tela cheia")
+        self.fullscreen_button.clicked.connect(self.toggle_fullscreen)
+        layout.addWidget(self.fullscreen_button)
         return layout
 
     def _build_controls(self) -> ScrollArea:
@@ -865,15 +889,57 @@ class IzhikevichApp(QMainWindow):
         setTheme(Theme.LIGHT if use_light_theme else Theme.DARK)
         self.apply_visual_theme()
 
+    def toggle_fullscreen(self) -> None:
+        if self.isFullScreen():
+            self.exit_fullscreen()
+        else:
+            self._previous_window_state = self.windowState()
+            self.showFullScreen()
+
+    def exit_fullscreen(self) -> None:
+        if not self.isFullScreen():
+            return
+        if self._previous_window_state & Qt.WindowState.WindowMaximized:
+            self.showMaximized()
+        else:
+            self.showNormal()
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange and hasattr(self, "fullscreen_button"):
+            fullscreen = self.isFullScreen()
+            self.fullscreen_button.setIcon(FluentIcon.CONSTRACT if fullscreen else FluentIcon.FULL_SCREEN)
+            self.fullscreen_button.setToolTip("Sair da tela cheia (Esc / F11)" if fullscreen else "Tela cheia (F11)")
+            self.fullscreen_button.setAccessibleName("Sair da tela cheia" if fullscreen else "Tela cheia")
+            if hasattr(self, "escape_shortcut"):
+                self.escape_shortcut.setEnabled(fullscreen)
+
     def apply_visual_theme(self) -> None:
         palette = LIGHT_PALETTE if self.is_light_theme else DARK_PALETTE
+        self.root.set_light_theme(self.is_light_theme)
         self.root.setStyleSheet(
-            "QWidget#appRoot, QWidget#controlPanel, QWidget#controlViewport, "
+            "QWidget#controlPanel, QWidget#controlViewport, "
             "QWidget#signalsPanel, QWidget#signalsViewport, QWidget#networkPanel, QWidget#networkViewport "
-            f"{{ background-color: {palette['window']}; }}"
+            "{ background-color: transparent; }"
         )
+        # QScrollArea enables automatic background filling on its child when
+        # setWidget() is called. Disable it so transparent gaps show the art
+        # instead of the platform's default (often white) window brush.
+        for scroll in self.root.findChildren(ScrollArea):
+            scroll.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+            scroll.viewport().setAutoFillBackground(False)
+            if scroll.widget() is not None:
+                scroll.widget().setAutoFillBackground(False)
+        card_color = "rgba(255, 255, 255, 242)" if self.is_light_theme else "rgba(21, 25, 31, 242)"
+        for card in self.root.findChildren(SimpleCardWidget):
+            card.setStyleSheet(
+                f"SimpleCardWidget {{ background-color: {card_color}; "
+                f"border: 1px solid {palette['border']}; border-radius: 8px; }}"
+            )
+        pane_color = "rgba(243, 246, 249, 235)" if self.is_light_theme else "rgba(15, 17, 21, 235)"
         self.tabs.setStyleSheet(
-            f"QTabWidget::pane {{ border: 1px solid {palette['border']}; border-radius: 8px; }}"
+            f"QTabWidget::pane {{ background-color: {pane_color}; "
+            f"border: 1px solid {palette['border']}; border-radius: 8px; }}"
             f"QTabBar::tab {{ color: {palette['muted']}; background: {palette['window']}; "
             "padding: 9px 12px; margin-right: 3px; }"
             f"QTabBar::tab:selected {{ color: {palette['text']}; background: {palette['plot']}; "
@@ -907,6 +973,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--threads", type=int, default=default_cpu_threads(),
                         help="CPU inference threads (default: up to 8, leaving one logical CPU free)")
+    parser.add_argument("--fullscreen", action="store_true", help="Start in fullscreen; Esc exits, F11 toggles")
     args, qt_args = parser.parse_known_args()
     if args.threads < 1:
         parser.error("--threads must be positive.")
@@ -920,7 +987,10 @@ def main() -> int:
     setTheme(Theme.DARK)
     setThemeColor("#00a884")
     window = IzhikevichApp()
-    window.show()
+    if args.fullscreen:
+        window.toggle_fullscreen()
+    else:
+        window.show()
     return app.exec()
 
 
