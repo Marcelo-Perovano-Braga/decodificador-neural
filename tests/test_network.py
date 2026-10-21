@@ -5,7 +5,7 @@ from dataclasses import replace
 import numpy as np
 
 from config import SimulationConfig
-from network import NetworkConfig, SparseNetwork, build_sparse_network, simulate_connected_batch
+from network import MAX_SYNAPSES, NetworkConfig, SparseNetwork, build_sparse_network, simulate_connected_batch
 from population import PopulationRequest, build_raster_preview, simulate_population
 from simulation import IzhikevichBatch, simulate_izhikevich_batch
 
@@ -164,7 +164,13 @@ class SparseNetworkTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 NetworkConfig(**kwargs)
         with self.assertRaisesRegex(ValueError, "limite"):
-            PopulationRequest((100_000, 100_000, 100_000), network=NetworkConfig())
+            NetworkConfig(out_degree=1000).degree_for(1_000_001)
+
+    def test_billion_synapse_request_passes_without_allocating_the_network(self):
+        config = NetworkConfig(out_degree=1000)
+        request = PopulationRequest((333_333, 333_333, 333_334), network=config)
+        self.assertEqual(sum(request.counts) * config.degree_for(sum(request.counts)), 1_000_000_000)
+        self.assertEqual(MAX_SYNAPSES, 1_000_000_000)
 
     def test_cancellation_during_topology_and_stepping(self):
         checks = 0

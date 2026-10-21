@@ -7,6 +7,7 @@ import numpy as np
 from config import CLASS_CODES, IZHIKEVICH_PARAMETERS, SimulationConfig
 from population import (
     MAX_NEURONS_PER_CLASS,
+    MAX_NEURONS_TOTAL,
     Population,
     PopulationRequest,
     build_raster_preview,
@@ -96,9 +97,14 @@ class PopulationTests(unittest.TestCase):
         ] * 300).classified, 300)
 
     def test_population_rejects_empty_negative_and_oversized_counts(self):
-        for counts in [(0, 0, 0), (-1, 1, 1), (MAX_NEURONS_PER_CLASS + 1, 0, 0)]:
+        for counts in [(0, 0, 0), (-1, 1, 1), (MAX_NEURONS_PER_CLASS + 1, 0, 0), (MAX_NEURONS_TOTAL, 1, 0)]:
             with self.subTest(counts=counts), self.assertRaises(ValueError):
                 PopulationRequest(counts)
+
+    def test_population_accepts_a_million_total_in_balanced_and_single_class_requests(self):
+        # Validate the boundary without allocating voltage traces or topology.
+        for counts in ((333_333, 333_333, 333_334), (1_000_000, 0, 0), (0, 1_000_000, 0), (0, 0, 1_000_000)):
+            self.assertEqual(sum(PopulationRequest(counts).counts), MAX_NEURONS_TOTAL)
 
     def test_cancelled_population_does_not_start(self):
         with self.assertRaises(CancelledError):

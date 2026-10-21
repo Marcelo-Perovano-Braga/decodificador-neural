@@ -17,7 +17,8 @@ if TYPE_CHECKING:
     from inference import InferenceResult
 
 
-MAX_NEURONS_PER_CLASS = 100_000
+MAX_NEURONS_TOTAL = 1_000_000
+MAX_NEURONS_PER_CLASS = MAX_NEURONS_TOTAL
 RASTER_PREVIEW_SIZE = 200
 
 
@@ -37,6 +38,8 @@ class PopulationRequest:
             raise ValueError(f"Use de 0 a {MAX_NEURONS_PER_CLASS} neurônios por classe.")
         if sum(self.counts) == 0:
             raise ValueError("Selecione pelo menos um neurônio.")
+        if sum(self.counts) > MAX_NEURONS_TOTAL:
+            raise ValueError(f"População com {sum(self.counts):,} neurônios; limite de {MAX_NEURONS_TOTAL:,} no total.")
         if not np.isfinite(self.current):
             raise ValueError("O estímulo deve ser finito.")
         if self.seed < 0:

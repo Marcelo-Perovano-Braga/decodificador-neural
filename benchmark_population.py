@@ -17,7 +17,7 @@ from config import CLASS_CODES, SimulationConfig
 from inference import default_cpu_threads
 from models import NeuronClassifier1D
 from network import NetworkConfig
-from population import MAX_NEURONS_PER_CLASS, PopulationRequest
+from population import MAX_NEURONS_TOTAL, PopulationRequest
 from population_worker import process_population
 
 
@@ -39,8 +39,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.threads < 1 or args.repeats < 1:
         parser.error("--threads and --repeats must be positive.")
-    if any(not 1 <= n <= MAX_NEURONS_PER_CLASS * len(CLASS_CODES) for n in args.neurons):
-        parser.error(f"--neurons must be between 1 and {MAX_NEURONS_PER_CLASS * len(CLASS_CODES)}.")
+    if any(not 1 <= n <= MAX_NEURONS_TOTAL for n in args.neurons):
+        parser.error(f"--neurons must be between 1 and {MAX_NEURONS_TOTAL}.")
     network_config = None
     if args.connected:
         try:
